@@ -368,29 +368,41 @@ async def trends(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def matome(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """トレンドをAI分析してまとめ生成"""
-    await update.message.reply_text("🔥 トレンドを取得中...")
+    """今日のTelegram記事+トレンドをAIまとめ生成"""
+    await update.message.reply_text("📝 本日の情報を収集中...")
 
+    # 1. GitHubから今日の保存記事を取得
+    today_articles = ""
+    try:
+        today_articles = await _fetch_today_articles()
+        if today_articles:
+            await update.message.reply_text(f"📄 今日の保存記事を取得しました")
+    except Exception as e:
+        logger.error(f"GitHub記事取得エラー: {e}")
+
+    # 2. トレンドも取得
+    trend_list = []
     try:
         trend_list = await get_realtime_trends()
+        if trend_list:
+            await update.message.reply_text(f"🔥 トレンド {len(trend_list)} 件を取得")
     except Exception as e:
-        await update.message.reply_text(f"❌ トレンド取得エラー: {e}")
-        return
+        logger.error(f"トレンド取得エラー: {e}")
 
-    if not trend_list:
-        await update.message.reply_text("トレンドが取得できませんでした。")
+    if not today_articles and not trend_list:
+        await update.message.reply_text("❌ まとめる情報がありません。記事を保存するか、/trendsでトレンドを確認してください。")
         return
 
     context.user_data["trends"] = trend_list
 
-    await update.message.reply_text("📝 Gemini AIでまとめを生成中...")
+    await update.message.reply_text("🤖 Gemini AIでまとめを生成中...")
 
     try:
-        summary = await generate_matome(trend_list)
+        summary = await _generate_daily_matome(today_articles, trend_list)
         context.user_data["matome_text"] = summary
 
         # 分割送信
-        header = "📝 *本日のトレンドまとめ*\n\n"
+        header = "📝 *本日のまとめ*\n\n"
         chunks = []
         remaining = summary
         while remaining:
@@ -1023,6 +1035,77 @@ async def _fetch_article_text(url: str) -> str:
         return text[:3000]
     except Exception:
         return ""
+
+
+async def _fetch_today_articles() -> str:
+    """GitHubから今日の保存記事を取得"""
+    from datetime import datetime
+    from config import GITHUB_TOKEN, GITHUB_REPO, GITHUB_SAVE_PATH
+    import base64
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    file_path = f"{GITHUB_SAVE_PATH}/{date_str}.md"
+    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{file_path}"
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(api_url, headers=headers)
+        if resp.status_code == 200:
+            content = base64.b64decode(resp.json()["content"]).decode("utf-8")
+            return content
+        else:
+            return ""
+
+
+async def _generate_daily_matome(articles: str, trends: list[dict]) -> str:
+    """Gemini APIで今日の記事+トレンドまとめを生成"""
+    import asyncio
+    from google import genai
+    from config import GEMINI_API_KEY
+
+    # トレンドテキスト
+    trends_text = ""
+    if trends:
+        for i, t in enumerate(trends[:15], 1):
+            trends_text += f"{i}. {t['keyword']}"
+            if t.get("traffic"):
+                trends_text += f"（検索数: {t['traffic']}）"
+            trends_text += "\n"
+            for n in t.get("news", []):
+                trends_text += f"   - {n['title']}（{n['source']}）\n"
+
+    prompt = "以下の情報を基に、本日のまとめレポートを作成してください。\n\n"
+
+    if articles:
+        prompt += f"## 今日保存した記事・メモ\n\n{articles[:3000]}\n\n"
+
+    if trends_text:
+        prompt += f"## Googleトレンド急上昇ワード\n\n{trends_text}\n\n"
+
+    prompt += (
+        "以下のフォーマットでまとめてください：\n\n"
+        "## 📋 本日の活動サマリー\n"
+        "（保存した記事があれば、その内容と学びを整理）\n\n"
+        "## 🔥 注目トレンド TOP5\n"
+        "（各トピックについて2-3行で解説）\n\n"
+        "## 💡 ビジネス視点での考察\n"
+        "（ビジネスや起業に活かせるインサイト）\n\n"
+        "## 📌 明日のアクション提案\n"
+        "（今日の情報を基にした次のステップ）"
+    )
+
+    def _sync_generate():
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+        return response.text
+
+    return await asyncio.to_thread(_sync_generate)
 
 
 def _escape_md(text: str) -> str:
