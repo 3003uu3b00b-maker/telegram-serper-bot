@@ -503,6 +503,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         f"📋 テキストを受け取りました（{len(text)}文字）\n\n"
         f"どうしますか？",
         reply_markup=InlineKeyboardMarkup(keyboard),
+        reply_to_message_id=update.message.message_id,
     )
 
 
@@ -936,8 +937,14 @@ async def _handle_yt_mp3(query, video: dict):
 async def _handle_paste_github(query, context):
     """貼り付けテキストをGitHubに保存"""
     text = context.user_data.get("pasted_text")
+
+    # user_dataに無い場合、元メッセージのreply元からテキスト復元を試みる
+    if not text and query.message.reply_to_message and query.message.reply_to_message.text:
+        text = query.message.reply_to_message.text
+        logger.info(f"reply_to_messageからテキスト復元: {len(text)}文字")
+
     if not text:
-        await query.edit_message_text("❌ テキストが見つかりません。")
+        await query.edit_message_text("❌ テキストが見つかりません。もう一度テキストを送信してください。")
         return
 
     await query.edit_message_text("📁 GitHubに保存中...")
@@ -956,15 +963,20 @@ async def _handle_paste_github(query, context):
             f"🔗 {html_url}"
         )
     except Exception as e:
-        logger.error(f"テキスト保存エラー: {e}")
+        logger.error(f"テキスト保存エラー: {e}", exc_info=True)
         await query.edit_message_text(f"❌ 保存エラー: {e}")
 
 
 async def _handle_paste_mp3(query, context):
     """貼り付けテキストをMP3に変換"""
     text = context.user_data.get("pasted_text")
+
+    # user_dataに無い場合、元メッセージのreply元からテキスト復元を試みる
+    if not text and query.message.reply_to_message and query.message.reply_to_message.text:
+        text = query.message.reply_to_message.text
+
     if not text:
-        await query.edit_message_text("❌ テキストが見つかりません。")
+        await query.edit_message_text("❌ テキストが見つかりません。もう一度テキストを送信してください。")
         return
 
     await query.edit_message_text("🎵 MP3を生成中...")
