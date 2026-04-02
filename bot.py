@@ -512,10 +512,26 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     data = query.data
+    logger.info(f"ボタン押下: {data}, user_data keys: {list(context.user_data.keys())}")
 
+    try:
+        await _process_button(query, data, context)
+    except Exception as e:
+        logger.error(f"ボタン処理エラー: {data} -> {e}", exc_info=True)
+        try:
+            await query.message.reply_text(f"❌ エラーが発生しました: {e}")
+        except Exception:
+            pass
+
+
+async def _process_button(query, data: str, context: ContextTypes.DEFAULT_TYPE):
+    """ボタンの実処理（button_handlerから呼び出し）"""
     # トレンド系
     if data == "trends_matome":
         trend_list = context.user_data.get("trends", [])
+        if not trend_list:
+            await query.edit_message_text("❌ トレンドデータがありません。/trends を再実行してください。")
+            return
         if trend_list:
             await query.edit_message_text("📝 AIまとめ生成中...")
             try:
@@ -535,6 +551,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif data == "trends_github":
         trend_list = context.user_data.get("trends", [])
+        if not trend_list:
+            await query.edit_message_text("❌ トレンドデータがありません。/trends を再実行してください。")
+            return
         if trend_list:
             text = "# Googleトレンド急上昇ワード\n\n"
             for i, t in enumerate(trend_list, 1):
@@ -552,6 +571,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif data == "trends_mp3":
         trend_list = context.user_data.get("trends", [])
+        if not trend_list:
+            await query.edit_message_text("❌ トレンドデータがありません。/trends を再実行してください。")
+            return
         if trend_list:
             try:
                 await query.edit_message_text("🎵 トレンドMP3生成中...")
@@ -570,6 +592,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif data == "matome_github":
         matome_text = context.user_data.get("matome_text", "")
+        if not matome_text:
+            await query.edit_message_text("❌ まとめデータがありません。/matome を再実行してください。")
+            return
         if matome_text:
             try:
                 html_url = await save_to_github(title="[まとめ] 本日のトレンド分析", url="https://trends.google.co.jp/trending?geo=JP", snippet=matome_text)
@@ -579,6 +604,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif data == "matome_mp3":
         matome_text = context.user_data.get("matome_text", "")
+        if not matome_text:
+            await query.edit_message_text("❌ まとめデータがありません。/matome を再実行してください。")
+            return
         if matome_text:
             try:
                 await query.edit_message_text("🎵 まとめMP3生成中...")
@@ -596,6 +624,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # PLATEAU系
     if data == "plateau_github":
         pdata = context.user_data.get("plateau_data", {})
+        if not pdata:
+            await query.edit_message_text("❌ PLATEAUデータがありません。/plateau を再実行してください。")
+            return
         if pdata:
             try:
                 html_url = await save_to_github(
@@ -609,6 +640,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif data == "plateau_mp3":
         pdata = context.user_data.get("plateau_data", {})
+        if not pdata:
+            await query.edit_message_text("❌ PLATEAUデータがありません。/plateau を再実行してください。")
+            return
         if pdata:
             try:
                 await query.edit_message_text("🎵 MP3生成中...")
@@ -624,6 +658,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif data == "plateau_search":
         pdata = context.user_data.get("plateau_data", {})
+        if not pdata:
+            await query.edit_message_text("❌ PLATEAUデータがありません。/plateau を再実行してください。")
+            return
         if pdata:
             context.args = [pdata["location"]["name"]]
             await search(Update(update.update_id, callback_query=query), context)
