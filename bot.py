@@ -1183,7 +1183,10 @@ async def main():
     async with app:
         await app.initialize()
         await app.start()
-        await app.updater.start_polling()
+        await app.updater.start_polling(
+            allowed_updates=["message", "callback_query"],
+            drop_pending_updates=True,
+        )
         logger.info("Bot起動完了! Ctrl+Cで終了")
         # 停止シグナルまで待機
         import asyncio
